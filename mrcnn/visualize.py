@@ -300,6 +300,29 @@ def display_top_masks(image, mask, class_ids, class_names, limit=4):
         to_display.append(m)
         titles.append(class_names[class_id] if class_id != -1 else "-")
     display_images(to_display, titles=titles, cols=limit + 1, cmap="Blues_r")
+    
+    
+def display_top_masks(image, mask, image_name, class_ids, class_names, limit=4):
+    """Display the given image and the top few class masks."""
+    to_display = []
+    titles = []
+    to_display.append(image)
+    titles.append("H x W={}x{}   ID:{}".format(image.shape[0], image.shape[1], image_name))
+    # Pick top prominent classes in this image
+    unique_class_ids = np.unique(class_ids)
+    mask_area = [np.sum(mask[:, :, np.where(class_ids == i)[0]])
+                 for i in unique_class_ids]
+    top_ids = [v[0] for v in sorted(zip(unique_class_ids, mask_area),
+                                    key=lambda r: r[1], reverse=True) if v[1] > 0]
+    # Generate images and titles
+    for i in range(limit):
+        class_id = top_ids[i] if i < len(top_ids) else -1
+        # Pull masks of instances belonging to the same class.
+        m = mask[:, :, np.where(class_ids == class_id)[0]]
+        m = np.sum(m * np.arange(1, m.shape[-1] + 1), -1)
+        to_display.append(m)
+        titles.append(class_names[class_id] if class_id != -1 else "-")
+    display_images(to_display, titles=titles, cols=limit + 1, cmap="Blues_r")
 
 
 def plot_precision_recall(AP, precisions, recalls):
