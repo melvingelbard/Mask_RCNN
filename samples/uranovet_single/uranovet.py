@@ -33,6 +33,11 @@ from os.path import isfile, join
 import json
 import skimage
 
+import tensorflow.compat.v1 as tf
+from tensorflow.python.keras.backend import set_session
+from tensorflow.python.keras.models import load_model
+import keras.backend as k
+
 # Root directory of the project
 ROOT_DIR = os.path.abspath("../../")
 
@@ -42,6 +47,8 @@ from mrcnn.config import Config
 from mrcnn import utils
 from mrcnn import model as modellib
 from mrcnn import visualize
+
+
 
 # Path to trained weights file
 COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
@@ -173,46 +180,31 @@ class UranovetDataset(utils.Dataset):
 
 
 def train(model):
-    """Train the model."""
-    # Training dataset.
-    dataset_train = UranovetDataset()
-    dataset_train.load_uranovet(args.dataset, "train")
-    dataset_train.prepare()
+    global sess
+    global graph
+    with graph.as_default():
+        set_session(sess)
+        
+        """Train the model."""
+        # Training dataset.
+        dataset_train = UranovetDataset()
+        dataset_train.load_uranovet(args.dataset, "train")
+        dataset_train.prepare()
 
-    # Validation dataset
-    dataset_val = UranovetDataset()
-    dataset_val.load_uranovet(args.dataset, "val")
-    dataset_val.prepare()
+        # Validation dataset
+        dataset_val = UranovetDataset()
+        dataset_val.load_uranovet(args.dataset, "val")
+        dataset_val.prepare()
 
-    # *** This training schedule is an example. Update to your needs ***
-    # Since we're using a very small dataset, and starting from
-    # COCO trained weights, we don't need to train too long. Also,
-    # no need to train all layers, just the heads should do it.
-    print("Training network heads")
-    model.train(dataset_train, dataset_val,
-                learning_rate=config.LEARNING_RATE,
-                epochs=30,
-                layers='heads')
-
-
-# def color_splash(image, mask):
-#     """Apply color splash effect.
-#     image: RGB image [height, width, 3]
-#     mask: instance segmentation mask [height, width, instance count]
-
-#     Returns result image.
-#     """
-#     # Make a grayscale copy of the image. The grayscale copy still
-#     # has 3 RGB channels, though.
-#     gray = skimage.color.gray2rgb(skimage.color.rgb2gray(image)) * 255
-#     # Copy color pixels from the original color image where mask is set
-#     if mask.shape[-1] > 0:
-#         # We're treating all instances as one, so collapse the mask into one layer
-#         mask = (np.sum(mask, -1, keepdims=True) >= 1)
-#         splash = np.where(mask, image, gray).astype(np.uint8)
-#     else:
-#         splash = gray.astype(np.uint8)
-#     return splash
+        # *** This training schedule is an example. Update to your needs ***
+        # Since we're using a very small dataset, and starting from
+        # COCO trained weights, we don't need to train too long. Also,
+        # no need to train all layers, just the heads should do it.
+        print("Training network heads")
+        model.train(dataset_train, dataset_val,
+                    learning_rate=config.LEARNING_RATE,
+                    epochs=30,
+                    layers='heads')
 
 
 def detect(model, image_path=None, directory_path=None):
@@ -243,95 +235,100 @@ def detect(model, image_path=None, directory_path=None):
 
 if __name__ == '__main__':
     import argparse
+    
+    sess = tf.Session()
+    graph = tf.get_default_graph()
+    with graph.as_default():
+        set_session(sess)
 
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(
-        description='Train Mask R-CNN to detect Uranovet cassettes.')
-    parser.add_argument("command",
-                        metavar="<command>",
-                        help="'train', 'validate' or 'detect'")
-    parser.add_argument('--dataset', required=False,
-                        metavar="/path/to/uranovet/dataset/",
-                        help='Directory of the Uranovet dataset')
-    parser.add_argument('--weights', required=True,
-                        metavar="/path/to/weights.h5",
-                        help="Path to weights .h5 file or 'coco'")
-    parser.add_argument('--logs', required=False,
-                        default=DEFAULT_LOGS_DIR,
-                        metavar="/path/to/logs/",
-                        help='Logs and checkpoints directory (default=logs/)')
-    parser.add_argument('--image', required=False,
-                        metavar="path or URL to image",
-                        help='Image to detect cassette from')
-    parser.add_argument('--directory', required=False,
-                        metavar="path to directory of images",
-                        help='directory of imagesto detect cassette from')
-    args = parser.parse_args()
+        # Parse command line arguments
+        parser = argparse.ArgumentParser(
+            description='Train Mask R-CNN to detect Uranovet cassettes.')
+        parser.add_argument("command",
+                            metavar="<command>",
+                            help="'train', 'validate' or 'detect'")
+        parser.add_argument('--dataset', required=False,
+                            metavar="/path/to/uranovet/dataset/",
+                            help='Directory of the Uranovet dataset')
+        parser.add_argument('--weights', required=True,
+                            metavar="/path/to/weights.h5",
+                            help="Path to weights .h5 file or 'coco'")
+        parser.add_argument('--logs', required=False,
+                            default=DEFAULT_LOGS_DIR,
+                            metavar="/path/to/logs/",
+                            help='Logs and checkpoints directory (default=logs/)')
+        parser.add_argument('--image', required=False,
+                            metavar="path or URL to image",
+                            help='Image to detect cassette from')
+        parser.add_argument('--directory', required=False,
+                            metavar="path to directory of images",
+                            help='directory of imagesto detect cassette from')
+        args = parser.parse_args()
 
-    # Validate arguments
-    if args.command == "train":
-        if not args.dataset:
-            args.dataset = os.getcwd()
-        assert args.dataset, "Argument --dataset is required for training"
-    elif args.command == "detect":
-        assert args.image or args.directory,\
-               "Provide --image or --directory to apply detection"
+        # Validate arguments
+        if args.command == "train":
+            if not args.dataset:
+                args.dataset = os.getcwd()
+            assert args.dataset, "Argument --dataset is required for training"
+        elif args.command == "detect":
+            assert args.image or args.directory,\
+                   "Provide --image or --directory to apply detection"
 
-    print("Weights: ", args.weights)
-    print("Dataset: ", args.dataset)
-    print("Logs: ", args.logs)
+        print("Weights: ", args.weights)
+        print("Dataset: ", args.dataset)
+        print("Logs: ", args.logs)
 
-    # Configurations
-    if args.command == "train":
-        config = UranovetConfig()
-    else:
-        class InferenceConfig(UranovetConfig):
-            # Set batch size to 1 since we'll be running inference on
-            # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
-            GPU_COUNT = 1
-            IMAGES_PER_GPU = 1
-        config = InferenceConfig()
-    config.display()
+        # Configurations
+        if args.command == "train":
+            config = UranovetConfig()
+        else:
+            class InferenceConfig(UranovetConfig):
+                # Set batch size to 1 since we'll be running inference on
+                # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
+                GPU_COUNT = 1
+                IMAGES_PER_GPU = 1
+            config = InferenceConfig()
+        config.display()
 
-    # Create model
-    if args.command == "train":
-        model = modellib.MaskRCNN(mode="training", config=config,
-                                  model_dir=args.logs)
-    else:
-        model = modellib.MaskRCNN(mode="inference", config=config,
-                                  model_dir=args.logs)
+        # Create model
+        if args.command == "train":
+            model = modellib.MaskRCNN(mode="training", config=config,
+                                      model_dir=args.logs)
+        else:
+            model = modellib.MaskRCNN(mode="inference", config=config,
+                                      model_dir=args.logs)
 
-    # Select weights file to load
-    if args.weights.lower() == "coco":
-        weights_path = COCO_WEIGHTS_PATH
-        # Download weights file
-        if not os.path.exists(weights_path):
-            utils.download_trained_weights(weights_path)
-    elif args.weights.lower() == "last":
-        # Find last trained weights
-        weights_path = model.find_last()
-    elif args.weights.lower() == "imagenet":
-        # Start from ImageNet trained weights
-        weights_path = model.get_imagenet_weights()
-    else:
-        weights_path = args.weights
+        # Select weights file to load
+        if args.weights.lower() == "coco":
+            weights_path = COCO_WEIGHTS_PATH
+            # Download weights file
+            if not os.path.exists(weights_path):
+                utils.download_trained_weights(weights_path)
+        elif args.weights.lower() == "last":
+            # Find last trained weights
+            weights_path = model.find_last()
+        elif args.weights.lower() == "imagenet":
+            # Start from ImageNet trained weights
+            weights_path = model.get_imagenet_weights()
+        else:
+            weights_path = args.weights
 
-    # Load weights
-    print("Loading weights ", weights_path)
-    if args.weights.lower() == "coco":
-        # Exclude the last layers because they require a matching
-        # number of classes
-        model.load_weights(weights_path, by_name=True, exclude=[
-            "mrcnn_class_logits", "mrcnn_bbox_fc",
-            "mrcnn_bbox", "mrcnn_mask"])
-    else:
-        model.load_weights(weights_path, by_name=True)
+        # Load weights
+        print("Loading weights ", weights_path)
+        if args.weights.lower() == "coco":
+            # Exclude the last layers because they require a matching
+            # number of classes
+            model.load_weights(weights_path, by_name=True, exclude=[
+                "mrcnn_class_logits", "mrcnn_bbox_fc",
+                "mrcnn_bbox", "mrcnn_mask"])
+        else:
+            model.load_weights(weights_path, by_name=True)
 
-    # Train or evaluate
-    if args.command == "train":
-        train(model)
-    elif args.command == "detect":
-        detect(model, image_path=args.image, directory_path=args.directory)
-    else:
-        print("'{}' is not recognized. "
-              "Use 'train' or 'detect'".format(args.command))
+        # Train or evaluate
+        if args.command == "train":
+            train(model)
+        elif args.command == "detect":
+            detect(model, image_path=args.image, directory_path=args.directory)
+        else:
+            print("'{}' is not recognized. "
+                  "Use 'train' or 'detect'".format(args.command))

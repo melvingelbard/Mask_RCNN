@@ -17,13 +17,14 @@ from collections import OrderedDict
 import multiprocessing
 import numpy as np
 import tensorflow.compat.v1 as tf
-import keras
-import keras.backend as K
-import keras.layers as KL
-import keras.engine as KE
-import keras.models as KM
+from tensorflow import keras
+from keras import backend as K
+from keras import layers as KL
+from keras import engine as KE
+from keras import models as KM
 
-tf.compat.v1.disable_eager_execution()
+tf.compat.v1.disable_v2_behavior()
+
 
 from mrcnn import utils
 
@@ -2172,12 +2173,12 @@ class MaskRCNN():
         """
         # Optimizer object
         optimizer = keras.optimizers.SGD(
-            lr=learning_rate, momentum=momentum,
+            learning_rate=learning_rate, momentum=momentum,
             clipnorm=self.config.GRADIENT_CLIP_NORM)
         # Add Losses
         # First, clear previously set losses to avoid duplication
-        self.keras_model._losses = []
-        self.keras_model._per_input_losses = {}
+#         self.keras_model._losses = []
+#         self.keras_model._per_input_losses = {}
         loss_names = [
             "rpn_class_loss",  "rpn_bbox_loss",
             "mrcnn_class_loss", "mrcnn_bbox_loss", "mrcnn_mask_loss"]
@@ -2212,7 +2213,7 @@ class MaskRCNN():
             loss = (
                 tf.reduce_mean(layer.output, keepdims=True)
                 * self.config.LOSS_WEIGHTS.get(name, 1.))
-            self.keras_model.metrics_tensors.append(loss)
+            self.keras_model.add_metric(loss, name=name, aggregation="mean")
 
     def set_trainable(self, layer_regex, keras_model=None, indent=0, verbose=1):
         """Sets model layers as trainable if their names match
@@ -2377,7 +2378,8 @@ class MaskRCNN():
         else:
             workers = multiprocessing.cpu_count()
 
-        self.keras_model.fit_generator(
+        print("BEFORE")
+        self.keras_model.fit(
             train_generator,
             initial_epoch=self.epoch,
             epochs=epochs,
@@ -2387,9 +2389,11 @@ class MaskRCNN():
             validation_steps=self.config.VALIDATION_STEPS,
             max_queue_size=100,
             workers=workers,
-            use_multiprocessing=True,
+            use_multiprocessing=False,
         )
         self.epoch = max(self.epoch, epochs)
+        
+        print("AFTER")
 
     def mold_inputs(self, images):
         """Takes a list of images and modifies them to the format expected
