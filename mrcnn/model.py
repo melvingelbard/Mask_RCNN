@@ -16,14 +16,12 @@ import logging
 from collections import OrderedDict
 import multiprocessing
 import numpy as np
-import tensorflow.compat.v1 as tf
-from tensorflow import keras
+import tensorflow as tf
+import keras
 from keras import backend as K
 from keras import layers as KL
 from keras import engine as KE
 from keras import models as KM
-
-tf.compat.v1.disable_v2_behavior()
 
 
 from mrcnn import utils
@@ -266,7 +264,7 @@ def clip_boxes_graph(boxes, window):
     return clipped
 
 
-class ProposalLayer(KE.base_layer.Layer):
+class ProposalLayer(KE.Layer):
     """Receives anchor scores and selects a subset to pass as proposals
     to the second stage. Filtering is done based on anchor scores and
     non-max suppression to remove overlaps. It also applies bounding
@@ -355,7 +353,7 @@ def log2_graph(x):
     return tf.log(x) / tf.log(2.0)
 
 
-class PyramidROIAlign(KE.base_layer.Layer):
+class PyramidROIAlign(KE.Layer):
     """Implements ROI Pooling on multiple levels of the feature pyramid.
 
     Params:
@@ -633,7 +631,7 @@ def detection_targets_graph(proposals, gt_class_ids, gt_boxes, gt_masks, config)
     return rois, roi_gt_class_ids, deltas, masks
 
 
-class DetectionTargetLayer(KE.base_layer.Layer):
+class DetectionTargetLayer(KE.Layer):
     """Subsamples proposals and generates target box refinement, class_ids,
     and masks for each.
 
@@ -793,7 +791,7 @@ def refine_detections_graph(rois, probs, deltas, window, config):
     return detections
 
 
-class DetectionLayer(KE.base_layer.Layer):
+class DetectionLayer(KE.Layer):
     """Takes classified proposal boxes and their bounding box deltas and
     returns the final detection boxes.
 
@@ -2143,10 +2141,12 @@ class MaskRCNN():
         if exclude:
             layers = filter(lambda l: l.name not in exclude, layers)
 
-        if by_name:
-            hdf5_format.load_weights_from_hdf5_group_by_name(f, layers)
-        else:
-            hdf5_format.load_weights_from_hdf5_group(f, layers)
+        if h5py is None:
+            raise ImportError('`load_weights` requires h5py.')
+        f = h5py.File(filepath, mode='r')
+        if 'layer_names' not in f.attrs and 'model_weights' in f:
+            f = f['model_weights']
+            
         if hasattr(f, 'close'):
             f.close()
 
@@ -2173,12 +2173,12 @@ class MaskRCNN():
         """
         # Optimizer object
         optimizer = keras.optimizers.SGD(
-            learning_rate=learning_rate, momentum=momentum,
+            lr=learning_rate, momentum=momentum,
             clipnorm=self.config.GRADIENT_CLIP_NORM)
         # Add Losses
         # First, clear previously set losses to avoid duplication
-#         self.keras_model._losses = []
-#         self.keras_model._per_input_losses = {}
+        self.keras_model._losses = []
+        self.keras_model._per_input_losses = {}
         loss_names = [
             "rpn_class_loss",  "rpn_bbox_loss",
             "mrcnn_class_loss", "mrcnn_bbox_loss", "mrcnn_mask_loss"]
@@ -2187,17 +2187,9 @@ class MaskRCNN():
             if layer.output in self.keras_model.losses:
                 continue
             loss = (
-                tf.reduce_mean(layer.output, keepdims=True)
+                tf.reduce_mean(layer.output, keep_dims=True)
                 * self.config.LOSS_WEIGHTS.get(name, 1.))
             self.keras_model.add_loss(loss)
-
-        # Add L2 Regularization
-        # Skip gamma and beta weights of batch normalization layers.
-        reg_losses = [
-            keras.regularizers.l2(self.config.WEIGHT_DECAY)(w) / tf.cast(tf.size(w), tf.float32)
-            for w in self.keras_model.trainable_weights
-            if 'gamma' not in w.name and 'beta' not in w.name]
-        self.keras_model.add_loss(tf.add_n(reg_losses))
 
         # Compile
         self.keras_model.compile(
@@ -2211,9 +2203,9 @@ class MaskRCNN():
             layer = self.keras_model.get_layer(name)
             self.keras_model.metrics_names.append(name)
             loss = (
-                tf.reduce_mean(layer.output, keepdims=True)
+                tf.reduce_mean(layer.output, keep_dims=True)
                 * self.config.LOSS_WEIGHTS.get(name, 1.))
-            self.keras_model.add_metric(loss, name=name, aggregation="mean")
+            self.keras_model.metrics_tensors.append(loss)
 
     def set_trainable(self, layer_regex, keras_model=None, indent=0, verbose=1):
         """Sets model layers as trainable if their names match
@@ -2318,8 +2310,8 @@ class MaskRCNN():
                     imgaug.augmenters.Fliplr(0.5),
                     imgaug.augmenters.GaussianBlur(sigma=(0.0, 5.0))
                 ])
-	    custom_callbacks: Optional. Add custom callbacks to be called
-	        with the keras fit_generator method. Must be list of type keras.callbacks.
+            custom_callbacks: Optional. Add custom callbacks to be called
+            with the keras fit_generator method. Must be list of type keras.callbacks.
         no_augmentation_sources: Optional. List of sources to exclude for
             augmentation. A source is string that identifies a dataset and is
             defined in the Dataset class.
@@ -2377,9 +2369,12 @@ class MaskRCNN():
             workers = 0
         else:
             workers = multiprocessing.cpu_count()
+        
+        # Putting 1 here because it seems to work
+        workers = 1
+        print(f"Using {workers} workers")
 
-        print("BEFORE")
-        self.keras_model.fit(
+        self.keras_model.fit_generator(
             train_generator,
             initial_epoch=self.epoch,
             epochs=epochs,
@@ -2392,8 +2387,6 @@ class MaskRCNN():
             use_multiprocessing=False,
         )
         self.epoch = max(self.epoch, epochs)
-        
-        print("AFTER")
 
     def mold_inputs(self, images):
         """Takes a list of images and modifies them to the format expected

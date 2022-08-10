@@ -10,16 +10,16 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
        the command line as such:
 
     # Train a new model starting from ImageNet weights
-    python3 uranovet.py train --dataset=/path/to/dataset --weights=imagenet
+    python uranovet.py train --dataset=../../../../data/Uranovet/single/ios/single_ios_1 --weights=imagenet
 
     # Train a new model starting from specific weights file
-    python3 uranovet.py train --dataset=/path/to/dataset --weights=/path/to/weights.h5
+    python uranovet.py train --dataset=/path/to/dataset --weights=/path/to/weights.h5
 
     # Resume training a model that you had trained earlier
-    python3 uranovet.py train --dataset=/path/to/dataset --weights=last
+    python uranovet.py train --dataset=/path/to/dataset --weights=last
 
     # Generate submission file
-    python3 uranovet.py detect --dataset=/path/to/dataset --weights=<last or /path/to/weights.h5>
+    python uranovet.py detect --dataset=/path/to/dataset --weights=<last or /path/to/weights.h5>
 """
 
 import os
@@ -33,9 +33,7 @@ from os.path import isfile, join
 import json
 import skimage
 
-import tensorflow.compat.v1 as tf
-from tensorflow.python.keras.backend import set_session
-from tensorflow.python.keras.models import load_model
+import tensorflow as tf
 import keras.backend as k
 
 # Root directory of the project
@@ -60,6 +58,8 @@ DEFAULT_LOGS_DIR = os.path.join(ROOT_DIR, "logs")
 # Results directory
 # Save submission files here
 RESULTS_DIR = os.path.join(ROOT_DIR, "results/uranovet_single/")
+
+print("Using TensorFlow: " + tf.__version__)
 
 
 class UranovetConfig(Config):
@@ -168,7 +168,7 @@ class UranovetDataset(utils.Dataset):
 
         # Return mask, and array of class IDs of each instance. Since we have
         # one class ID only, we return an array of 1s
-        return mask.astype(np.bool), np.ones([mask.shape[-1]], dtype=np.int32)
+        return mask.astype(bool), np.ones([mask.shape[-1]], dtype=np.int32)
 
     def image_reference(self, image_id):
         """Return the path of the image."""
@@ -180,11 +180,6 @@ class UranovetDataset(utils.Dataset):
 
 
 def train(model):
-    global sess
-    global graph
-    with graph.as_default():
-        set_session(sess)
-        
         """Train the model."""
         # Training dataset.
         dataset_train = UranovetDataset()
@@ -235,100 +230,95 @@ def detect(model, image_path=None, directory_path=None):
 
 if __name__ == '__main__':
     import argparse
-    
-    sess = tf.Session()
-    graph = tf.get_default_graph()
-    with graph.as_default():
-        set_session(sess)
 
-        # Parse command line arguments
-        parser = argparse.ArgumentParser(
-            description='Train Mask R-CNN to detect Uranovet cassettes.')
-        parser.add_argument("command",
-                            metavar="<command>",
-                            help="'train', 'validate' or 'detect'")
-        parser.add_argument('--dataset', required=False,
-                            metavar="/path/to/uranovet/dataset/",
-                            help='Directory of the Uranovet dataset')
-        parser.add_argument('--weights', required=True,
-                            metavar="/path/to/weights.h5",
-                            help="Path to weights .h5 file or 'coco'")
-        parser.add_argument('--logs', required=False,
-                            default=DEFAULT_LOGS_DIR,
-                            metavar="/path/to/logs/",
-                            help='Logs and checkpoints directory (default=logs/)')
-        parser.add_argument('--image', required=False,
-                            metavar="path or URL to image",
-                            help='Image to detect cassette from')
-        parser.add_argument('--directory', required=False,
-                            metavar="path to directory of images",
-                            help='directory of imagesto detect cassette from')
-        args = parser.parse_args()
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description='Train Mask R-CNN to detect Uranovet cassettes.')
+    parser.add_argument("command",
+                        metavar="<command>",
+                        help="'train', 'validate' or 'detect'")
+    parser.add_argument('--dataset', required=False,
+                        metavar="/path/to/uranovet/dataset/",
+                        help='Directory of the Uranovet dataset')
+    parser.add_argument('--weights', required=True,
+                        metavar="/path/to/weights.h5",
+                        help="Path to weights .h5 file or 'coco'")
+    parser.add_argument('--logs', required=False,
+                        default=DEFAULT_LOGS_DIR,
+                        metavar="/path/to/logs/",
+                        help='Logs and checkpoints directory (default=logs/)')
+    parser.add_argument('--image', required=False,
+                        metavar="path or URL to image",
+                        help='Image to detect cassette from')
+    parser.add_argument('--directory', required=False,
+                        metavar="path to directory of images",
+                        help='directory of imagesto detect cassette from')
+    args = parser.parse_args()
 
-        # Validate arguments
-        if args.command == "train":
-            if not args.dataset:
-                args.dataset = os.getcwd()
-            assert args.dataset, "Argument --dataset is required for training"
-        elif args.command == "detect":
-            assert args.image or args.directory,\
-                   "Provide --image or --directory to apply detection"
+    # Validate arguments
+    if args.command == "train":
+        if not args.dataset:
+            args.dataset = os.getcwd()
+        assert args.dataset, "Argument --dataset is required for training"
+    elif args.command == "detect":
+        assert args.image or args.directory,\
+               "Provide --image or --directory to apply detection"
 
-        print("Weights: ", args.weights)
-        print("Dataset: ", args.dataset)
-        print("Logs: ", args.logs)
+    print("Weights: ", args.weights)
+    print("Dataset: ", args.dataset)
+    print("Logs: ", args.logs)
 
-        # Configurations
-        if args.command == "train":
-            config = UranovetConfig()
-        else:
-            class InferenceConfig(UranovetConfig):
-                # Set batch size to 1 since we'll be running inference on
-                # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
-                GPU_COUNT = 1
-                IMAGES_PER_GPU = 1
-            config = InferenceConfig()
-        config.display()
+    # Configurations
+    if args.command == "train":
+        config = UranovetConfig()
+    else:
+        class InferenceConfig(UranovetConfig):
+            # Set batch size to 1 since we'll be running inference on
+            # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
+            GPU_COUNT = 1
+            IMAGES_PER_GPU = 1
+        config = InferenceConfig()
+    config.display()
 
-        # Create model
-        if args.command == "train":
-            model = modellib.MaskRCNN(mode="training", config=config,
-                                      model_dir=args.logs)
-        else:
-            model = modellib.MaskRCNN(mode="inference", config=config,
-                                      model_dir=args.logs)
+    # Create model
+    if args.command == "train":
+        model = modellib.MaskRCNN(mode="training", config=config,
+                                  model_dir=args.logs)
+    else:
+        model = modellib.MaskRCNN(mode="inference", config=config,
+                                  model_dir=args.logs)
 
-        # Select weights file to load
-        if args.weights.lower() == "coco":
-            weights_path = COCO_WEIGHTS_PATH
-            # Download weights file
-            if not os.path.exists(weights_path):
-                utils.download_trained_weights(weights_path)
-        elif args.weights.lower() == "last":
-            # Find last trained weights
-            weights_path = model.find_last()
-        elif args.weights.lower() == "imagenet":
-            # Start from ImageNet trained weights
-            weights_path = model.get_imagenet_weights()
-        else:
-            weights_path = args.weights
+    # Select weights file to load
+    if args.weights.lower() == "coco":
+        weights_path = COCO_WEIGHTS_PATH
+        # Download weights file
+        if not os.path.exists(weights_path):
+            utils.download_trained_weights(weights_path)
+    elif args.weights.lower() == "last":
+        # Find last trained weights
+        weights_path = model.find_last()
+    elif args.weights.lower() == "imagenet":
+        # Start from ImageNet trained weights
+        weights_path = model.get_imagenet_weights()
+    else:
+        weights_path = args.weights
 
-        # Load weights
-        print("Loading weights ", weights_path)
-        if args.weights.lower() == "coco":
-            # Exclude the last layers because they require a matching
-            # number of classes
-            model.load_weights(weights_path, by_name=True, exclude=[
-                "mrcnn_class_logits", "mrcnn_bbox_fc",
-                "mrcnn_bbox", "mrcnn_mask"])
-        else:
-            model.load_weights(weights_path, by_name=True)
+    # Load weights
+    print("Loading weights ", weights_path)
+    if args.weights.lower() == "coco":
+        # Exclude the last layers because they require a matching
+        # number of classes
+        model.load_weights(weights_path, by_name=True, exclude=[
+            "mrcnn_class_logits", "mrcnn_bbox_fc",
+            "mrcnn_bbox", "mrcnn_mask"])
+    else:
+        model.load_weights(weights_path, by_name=True)
 
-        # Train or evaluate
-        if args.command == "train":
-            train(model)
-        elif args.command == "detect":
-            detect(model, image_path=args.image, directory_path=args.directory)
-        else:
-            print("'{}' is not recognized. "
-                  "Use 'train' or 'detect'".format(args.command))
+    # Train or evaluate
+    if args.command == "train":
+        train(model)
+    elif args.command == "detect":
+        detect(model, image_path=args.image, directory_path=args.directory)
+    else:
+        print("'{}' is not recognized. "
+              "Use 'train' or 'detect'".format(args.command))
