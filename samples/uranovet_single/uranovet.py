@@ -47,7 +47,6 @@ from mrcnn import model as modellib
 from mrcnn import visualize
 
 
-
 # Path to trained weights file
 COCO_WEIGHTS_PATH = os.path.join(ROOT_DIR, "mask_rcnn_coco.h5")
 
@@ -81,7 +80,15 @@ class UranovetConfig(Config):
     STEPS_PER_EPOCH = 100
 
     # Skip detections with < 90% confidence
-    DETECTION_MIN_CONFIDENCE = 0.9
+    DETECTION_MIN_CONFIDENCE = 0.8
+    
+    IMAGE_MIN_DIM = 512
+    IMAGE_MAX_DIM = 512
+    
+    # Number of validation steps to run at the end of every training epoch.
+    # A bigger number improves accuracy of validation stats, but slows
+    # down the training.
+    VALIDATION_STEPS = 10
     
 
 
@@ -198,30 +205,28 @@ def train(model):
         print("Training network heads")
         model.train(dataset_train, dataset_val,
                     learning_rate=config.LEARNING_RATE,
-                    epochs=30,
+                    epochs=60,
                     layers='heads')
 
 
 def detect(model, image_path=None, directory_path=None):
     assert image_path or directory_path
-    
-    
+
     if directory_path:
-        all_images = [f for f in listdir(directory_path) if isfile(join(mypath, f)) and f.endswith(".png")]
+        all_images = [f for f in listdir(directory_path) if isfile(join(directory_path, f)) and f.endswith(".png")]
     else:
         all_images = [image_path]
 
-    # Image or directory?
     for image_path in all_images:
         # Run model detection and generate the color splash effect
-        print("Running on {}".format(args.image))
+        print("Running on {}".format(image_path))
         # Read image
-        image = skimage.io.imread(args.image)
+        image = skimage.io.imread(join(directory_path, image_path))[:, :, :3]
         # Detect objects
         r = model.detect([image], verbose=1)[0]
         # Save output
 #         file_name = "result_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
-        print(image_path + " --> " + r)
+        print(image_path + " --> " + str(r))
 
 
 ############################################################
