@@ -2115,8 +2115,9 @@ class MaskRCNN():
         # Conditional import to support versions of Keras before 2.2
         # TODO: remove in about 6 months (end of 2018)
         try:
-            from tensorflow.python.keras.saving import hdf5_format
+            from keras.engine import saving
         except ImportError:
+            print("Import error! Running {} instead".format("from keras.engine import topology as saving"))
             # Keras before 2.2 used the 'topology' namespace.
             from keras.engine import topology as saving
 
@@ -2138,12 +2139,13 @@ class MaskRCNN():
         # Exclude some layers
         if exclude:
             layers = filter(lambda l: l.name not in exclude, layers)
+            
+        keras_model.load_weights(filepath, by_name=by_name)
 
-        if h5py is None:
-            raise ImportError('`load_weights` requires h5py.')
-        f = h5py.File(filepath, mode='r')
-        if 'layer_names' not in f.attrs and 'model_weights' in f:
-            f = f['model_weights']
+        if by_name:
+            saving.load_weights_from_hdf5_group_by_name(f, layers)
+        else:
+            saving.load_weights_from_hdf5_group(f, layers)
             
         if hasattr(f, 'close'):
             f.close()
@@ -2185,7 +2187,7 @@ class MaskRCNN():
             if layer.output in self.keras_model.losses:
                 continue
             loss = (
-                tf.reduce_mean(layer.output, keep_dims=True)
+                tf.reduce_mean(layer.output, keepdims=True)
                 * self.config.LOSS_WEIGHTS.get(name, 1.))
             self.keras_model.add_loss(loss)
             
@@ -2209,7 +2211,7 @@ class MaskRCNN():
             layer = self.keras_model.get_layer(name)
             self.keras_model.metrics_names.append(name)
             loss = (
-                tf.reduce_mean(layer.output, keep_dims=True)
+                tf.reduce_mean(layer.output, keepdims=True)
                 * self.config.LOSS_WEIGHTS.get(name, 1.))
             self.keras_model.metrics_tensors.append(loss)
 

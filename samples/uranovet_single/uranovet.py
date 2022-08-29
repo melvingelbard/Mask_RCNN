@@ -32,6 +32,8 @@ from os import listdir
 from os.path import isfile, join
 import json
 import skimage
+import datetime
+import matplotlib.pyplot as plt
 
 import tensorflow as tf
 import keras.backend as k
@@ -225,8 +227,17 @@ def detect(model, image_path=None, directory_path=None):
         # Detect objects
         r = model.detect([image], verbose=1)[0]
         # Save output
-#         file_name = "result_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
-        print(image_path + " --> " + str(r))
+        file_name = directory_path + "/result_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
+        
+        
+        # Save image with masks
+        visualize.display_instances(
+            image, r['rois'], r['masks'], r['class_ids'],
+            ["Background", "Cassette"], r['scores'],
+            show_bbox=False, show_mask=False,
+            title="Predictions", show_plot=False)
+        plt.savefig(file_name)
+        print(image_path + " is saved in " + file_name)
 
 
 ############################################################
