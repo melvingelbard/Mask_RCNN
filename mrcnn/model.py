@@ -2104,6 +2104,7 @@ class MaskRCNN():
         try:
             from keras.engine import saving
         except ImportError:
+            print("Import error! Running {} instead".format("from keras.engine import topology as saving"))
             # Keras before 2.2 used the 'topology' namespace.
             from keras.engine import topology as saving
 
@@ -2125,6 +2126,8 @@ class MaskRCNN():
         # Exclude some layers
         if exclude:
             layers = filter(lambda l: l.name not in exclude, layers)
+            
+        keras_model.load_weights(filepath, by_name=by_name)
 
         if by_name:
             saving.load_weights_from_hdf5_group_by_name(f, layers)
